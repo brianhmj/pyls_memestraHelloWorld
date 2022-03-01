@@ -1,7 +1,6 @@
 import os
 from pylsp import hookimpl, lsp
-# from memestra import memestra
-from .parseImport import get_imports
+from memestra import memestra
 
 import logging
 # Setting up basic configuration, logging everything that has an ERROR level 
@@ -46,29 +45,44 @@ def pylsp_lint(config, document):
     # try-except to catch any expections that rises
     try:
         with open(document.path, 'r') as code: #opens the current code in the backend for parsing
-            importCases = get_imports(code)
-            diagnostics = format_text(importCases, [])
+            deprecated_uses = memestra(
+                code,
+                decorator=(settings.get('decorator_module'),
+                           settings.get('decorator_function')),
+                reason_keyword=settings.get('reason_keyword'),
+                recursive=settings.get('recursive'),
+                cache_dir=settings.get('cache_dir'),
+                search_paths=search_paths)
+            # calling format text_that is defined below
+            diagnostics = format_text(deprecated_uses, [])
     except SyntaxError as e:
         logger.error('Syntax error at {} - {} ({})', e.line, e.column, e.message)
         raise e
     
     return diagnostics
 
-def format_text(import_cases, diagnostics):
+def format_text(deprecated_uses, diagnostics):
     # Formatting the error messages that comes up this is what is returned. I was going to 
     # try to remove as much as I can but the line number requires memestra that parses to return
     # the error chracters (line number)
-    if import_cases:
-        for x in range(len(import_cases)):
-            err_range = {
-                'start': {'line': import_cases[x][3] - 1, 'character': import_cases[x][4]},
-                'end': {'line': import_cases[x][3] - 1, 'character': import_cases[x][5]},
-            }
+    for fname, fd, lineno, colno, reason in deprecated_uses:
+        err_range = {
+            'start': {'line': lineno - 1, 'character': colno},
+            'end': {'line': lineno - 1, 'character': colno + len(fname)},
+        }
+        if reason and reason != "reason":
             diagnostics.append({
-                'source': 'Brian',
+                'source': 'memestra',
                 'range': err_range,
-                'message': "You have imported " + import_cases[x][1][0] + " here.",
+                # 'message' : asdf,
+                'message': "HELLO WORLD! you were trying to use " + fname + " here. But you should know " + reason,
                 'severity': lsp.DiagnosticSeverity.Information,
             })
-
+        else:
+            diagnostics.append({
+                'source': 'memestra',
+                'range': err_range,
+                'message': "HELLO WORLD! you were trying to use " + fname + " here.",
+                'severity': lsp.DiagnosticSeverity.Information,
+            })
     return diagnostics
